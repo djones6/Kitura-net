@@ -20,7 +20,9 @@ import Foundation
 class ParseResults {
     /// Have the parsing completed? (MessageComplete)
     var completed = false
-    
+
+    var headersCompleted = false
+
     /// HTTP Method of the incoming message.
     private(set) var method = ""
     
@@ -50,7 +52,7 @@ class ParseResults {
     
     /// Chunk of body read in by the http_parser, filled by callbacks to onBody
     private(set) var bodyChunk = BufferList()
-    
+
     init() {}
     
     /// Callback for when a piece of the body of the message was parsed
@@ -67,6 +69,7 @@ class ParseResults {
     /// - Parameter versionMajor: major version of HTTP
     /// - Parameter versionMinor: minor version of HTTP
     func onHeadersComplete(method: String, versionMajor: UInt16, versionMinor: UInt16) {
+        headersCompleted = true
         httpVersionMajor = versionMajor
         httpVersionMinor = versionMinor
         self.method = method

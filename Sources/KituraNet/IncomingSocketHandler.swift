@@ -86,7 +86,7 @@ public class IncomingSocketHandler {
     /// Provides an ability to limit the maximum amount of data that can be read from a socket before rejecting a request and closing
     /// the connection.
     /// This is to protect against accidental or malicious requests from exhausting available memory.
-    private let options: ServerOptions
+    let options: ServerOptions
 
     /// preparingToClose is set when prepareToClose() gets called or anytime we detect the socket has errored or was closed,
     /// so we try to close and cleanup as long as there is no data waiting to be written and a socket read/write is not in progress.
@@ -160,17 +160,37 @@ public class IncomingSocketHandler {
         do {
             var length = 1
             while  length > 0  {
-                if let readBufferLimit = self.options.requestSizeLimit, readBuffer.length > readBufferLimit {
-                    let clientSource = "\(socket.remoteHostname):\(socket.remotePort)"
-                    if let (httpStatus, response) = self.options.requestSizeResponseGenerator(readBufferLimit, clientSource) {
-                        let statusCode = httpStatus.rawValue
-                        let statusDescription = HTTP.statusCodes[statusCode] ?? ""
-                        let contentLength = response.utf8.count
-                        let httpResponse = "HTTP/1.1 \(statusCode) \(statusDescription)\r\nConnection: Close\r\nContent-Length: \(contentLength)\r\n\r\n".appending(response)
-                        _ = try? socket.write(from: httpResponse)
+                Log.debug("parser status = \((processor as? IncomingHTTPSocketProcessor)?.state)")
+                // Impose request size limit on the reading of the body. This is not exact,
+                // as we only have the size of the total buffer and do not know at what point
+                // in the buffer the headers end. So we allow header size limit + body limit.
+                if let httpProcessor = processor as? IncomingHTTPSocketProcessor {
+                    if httpProcessor.state == .readingMessage, let readBufferLimit = self.options.requestSizeLimit, let headerSizeLimit = self.options.requestHeaderSizeLimit, readBuffer.length > readBufferLimit + headerSizeLimit {
+                        Log.debug("Oversized request body (\(readBuffer.length) > \(readBufferLimit + headerSizeLimit)")
+                        let clientSource = "\(socket.remoteHostname):\(socket.remotePort)"
+                        if let (httpStatus, response) = self.options.requestSizeResponseGenerator(readBufferLimit, clientSource) {
+                            let statusCode = httpStatus.rawValue
+                            let statusDescription = HTTP.statusCodes[statusCode] ?? ""
+                            let contentLength = response.utf8.count
+                            let httpResponse = "HTTP/1.1 \(statusCode) \(statusDescription)\r\nConnection: Close\r\nContent-Length: \(contentLength)\r\n\r\n".appending(response)
+                            _ = try? socket.write(from: httpResponse)
+                        }
+                        self.close()
+                        return true
                     }
-                    preparingToClose = true
-                    return true
+                    // Impose request header size limit
+                    else if httpProcessor.state == .readingHeaders, let headerSizeLimit = self.options.requestHeaderSizeLimit, readBuffer.length > headerSizeLimit {
+                        let clientSource = "\(socket.remoteHostname):\(socket.remotePort)"
+                        if let (httpStatus, response) = self.options.requestSizeResponseGenerator(headerSizeLimit, clientSource) {
+                            let statusCode = httpStatus.rawValue
+                            let statusDescription = HTTP.statusCodes[statusCode] ?? ""
+                            let contentLength = response.utf8.count
+                            let httpResponse = "HTTP/1.1 \(statusCode) \(statusDescription)\r\nConnection: Close\r\nContent-Length: \(contentLength)\r\n\r\n".appending(response)
+                            _ = try? socket.write(from: httpResponse)
+                        }
+                        self.close()
+                        return true
+                    }
                 }
                 length = try socket.read(into: readBuffer)
                 //Log.debug("Read \(length) bytes from socket \(socket.socketfd), readBuffer size: \(readBuffer.length)")

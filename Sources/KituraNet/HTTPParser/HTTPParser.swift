@@ -44,6 +44,8 @@ class HTTPParser {
     
     /// Parsing of message completed
     var completed: Bool { return parseResults.completed }
+
+    var headersCompleted: Bool { return parseResults.headersCompleted }
     
     /// A Handle to the HTTPParser C-library
     var parser: http_parser
@@ -72,7 +74,7 @@ class HTTPParser {
 
         parser = http_parser()
         settings = http_parser_settings()
-        
+
         parser.data = UnsafeMutableRawPointer(&parseResults)
         
         settings.on_url = { (parser, chunk, length) -> Int32 in

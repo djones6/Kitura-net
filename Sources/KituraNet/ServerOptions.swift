@@ -33,8 +33,11 @@ import LoggerAPI
  */
 public struct ServerOptions {
 
-    /// A default limit of 1mb on the size of requests that a server should accept.
+    /// A default limit of 1mb on the size of request body that a server should accept.
     public static let defaultRequestSizeLimit = 1048576
+
+    /// A default limit of 80kb on the size of request headers that a server should accept.
+    public static let defaultRequestHeaderSizeLimit = 81920
 
     /// A default limit of 10,000 on the number of concurrent connections that a server should accept.
     public static let defaultConnectionLimit = 10000
@@ -53,11 +56,17 @@ public struct ServerOptions {
         return (.serviceUnavailable, "")
     }
 
-    /// Defines the maximum size of an incoming request, in bytes. If requests are received that are larger
-    /// than this limit, they will be rejected and the connection will be closed.
+    /// Defines the maximum size of an incoming request body, in bytes. If a request body is received that is larger
+    /// than this limit, it will be rejected and the connection will be closed.
     ///
     /// A value of `nil` means no limit.
     public let requestSizeLimit: Int?
+
+    /// Defines the maximum size of an incoming request's headers, in bytes. If a request's headers exceed this
+    /// limit, it will be rejected and the connection will be closed.
+    ///
+    /// A value of `nil` means no limit.
+    public let requestHeaderSizeLimit: Int?
 
     /// Defines the maximum number of concurrent connections that a server should accept. Clients attempting
     /// to connect when this limit has been reached will be rejected.
@@ -103,15 +112,18 @@ public struct ServerOptions {
     /// Create a `ServerOptions` to determine the behaviour of a `Server`.
     ///
     /// - parameter requestSizeLimit: The maximum size of an incoming request. Defaults to `ServerOptions.defaultRequestSizeLimit`.
+    /// - parameter requestHeaderSizeLimit: The maximum size of an incoming request header. Defaults to `ServerOptions.defaultRequestHeaderSizeLimit`.
     /// - parameter connectionLimit: The maximum number of concurrent connections. Defaults to `ServerOptions.defaultConnectionLimit`.
     /// - parameter requestSizeResponseGenerator: A closure producing a response to send to a client when an over-sized request is rejected. Defaults to `ServerOptions.defaultRequestSizeResponseGenerator`.
     /// - parameter defaultConnectionResponseGenerator: A closure producing a response to send to a client when a the server is busy and new connections are not being accepted. Defaults to `ServerOptions.defaultConnectionResponseGenerator`.
     public init(requestSizeLimit: Int? = ServerOptions.defaultRequestSizeLimit,
+                requestHeaderSizeLimit: Int? = ServerOptions.defaultRequestHeaderSizeLimit,
                 connectionLimit: Int? = ServerOptions.defaultConnectionLimit,
                 requestSizeResponseGenerator: @escaping (Int, String) -> (HTTPStatusCode, String)? = ServerOptions.defaultRequestSizeResponseGenerator,
                 connectionResponseGenerator: @escaping (Int, String) -> (HTTPStatusCode, String)? = ServerOptions.defaultConnectionResponseGenerator)
     {
         self.requestSizeLimit = requestSizeLimit
+        self.requestHeaderSizeLimit = requestHeaderSizeLimit
         self.connectionLimit = connectionLimit
         self.requestSizeResponseGenerator = requestSizeResponseGenerator
         self.connectionResponseGenerator = connectionResponseGenerator

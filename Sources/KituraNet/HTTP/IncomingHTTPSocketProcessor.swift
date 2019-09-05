@@ -103,14 +103,16 @@ public class IncomingHTTPSocketProcessor: IncomingSocketProcessor {
     
     /// An enum for internal state
     enum State {
-        case reset, readingMessage, messageCompletelyRead
+        case reset, readingHeaders, readingMessage, messageCompletelyRead
     }
     
     /// The state of this handler
-    private(set) var state = State.readingMessage
+    private(set) var state = State.readingHeaders
     
     /// Location in the buffer to start parsing from
     private var parseStartingFrom = 0
+
+    private var parsingStatus: HTTPParserStatus = HTTPParserStatus()
     
     init(socket: Socket, using: ServerDelegate, keepalive: KeepAliveState) {
         delegate = using
@@ -138,7 +140,10 @@ public class IncomingHTTPSocketProcessor: IncomingSocketProcessor {
         switch(state) {
         case .reset:
             httpParser.reset()
-            state = .readingMessage
+            state = .readingHeaders
+            fallthrough
+
+        case .readingHeaders:
             fallthrough
 
         case .readingMessage:
@@ -250,11 +255,14 @@ public class IncomingHTTPSocketProcessor: IncomingSocketProcessor {
         status.bytesLeft = length - numberParsed
         
         if httpParser.completed {
+            Log.debug("parser body completed")
             status.state = .messageComplete
             status.keepAlive = httpParser.isKeepAlive() 
             return status
-        }
-        else if numberParsed != length  {
+        } else if httpParser.headersCompleted {
+            Log.debug("parser headers completed")
+            status.state = .headersComplete
+        } else if numberParsed != length  {
             /* Handle error. Usually just close the connection. */
             status.error = .parsedLessThanRead
         }
@@ -265,7 +273,7 @@ public class IncomingHTTPSocketProcessor: IncomingSocketProcessor {
     /// Invoke the HTTP parser against the specified buffer of data and
     /// convert the HTTP parser's status to our own.
     private func parse(_ buffer: NSData) {
-        let parsingStatus = parse(buffer, from: parseStartingFrom)
+        parsingStatus = parse(buffer, from: parseStartingFrom)
         
         if parsingStatus.bytesLeft == 0 {
             parseStartingFrom = 0
@@ -291,6 +299,9 @@ public class IncomingHTTPSocketProcessor: IncomingSocketProcessor {
         
         switch(parsingStatus.state) {
         case .initial:
+            break
+        case .headersComplete:
+            state = .readingMessage
             break
         case .messageComplete:
             isUpgrade = parsingStatus.upgrade
